@@ -39,7 +39,41 @@
 <!-- The path a submission takes, from arriving to the label a reader sees.
      Six or seven steps — this is the trace you wrote in Milestone 1. -->
 
+**Step 1: The route (`app.py::submit`).** Receives a JSON body. Adds a validated
+`text`, a `creator_id`, and a new `content_id`. Passes the text to both signals.
+Bad input (missing, empty, non-string, or under a minimum word count) is rejected
+with a 400 before any signal runs. If the model cannot load
+(`DetectorUnavailable`), the route returns a 503. As a backstop, it also turns a
+`ValueError` from the detector into a 400.
 
+**Step 2: Signal one (`detector.py::model_signal`).** Receives the text. Adds a
+0-1 score for how predictable the text is to a language model (higher = more
+AI-like). Returns it to the route.
+
+**Step 3: Signal two (`stylometry.py::style_signal`).** Receives the text. Adds
+a 0-1 score for the shape of the text (sentence-length variation, vocabulary
+repetition, punctuation), with no regard for meaning (higher = more AI-like).
+Returns it to the route.
+
+**Step 4: The combining rule (`scoring.py::combine_signals`).** Receives the two
+scores. Adds one combined 0-1 score (higher = more AI-like). Returns it to the
+route.
+
+**Step 5: The label mapping (`scoring.py::score_to_label`, plus a confidence
+helper in `scoring.py`).** Receives the combined score. Adds a `guess`
+("human", "unsure" or "ai"), the plain-English `label` a reader sees, and a
+`confidence`, meaning how sure the system is in its own guess. Returns all
+three to the route.
+
+**Step 6: Storage (`audit.py::log_decision`).** Receives the content_id,
+creator_id, both signal scores, the combined score, the guess, the label and the
+confidence. Adds one log line with a timestamp and `status: "decided"`. Returns
+to the route. This line is what `/appeal` later finds by content_id.
+
+**Step 7: The response.** The route receives everything decided and adds nothing
+new. It sends the client a selected subset: `content_id`, `guess`, `confidence`,
+`label`, `model_score` and `style_score`. The combined score and the log entry
+stay internal.
 
 ---
 
@@ -54,18 +88,47 @@
 ### Signal one — the model signal
 
 **What it measures:**
+It runs a language model (gpt2) over the text and measures how well the model
+could predict each word. That "degree of surprise" is perplexity. **Lower**
+perplexity means the text is more predictable, so it is treated as more
+AI-like. The result is converted to a 0–1 score, where higher means more
+AI-like.
 
 **Why that might differ between human and AI writing:**
+An AI writes by picking the word that is likely to come next, so its output is
+easy for a model to predict. Human writing has surprising word choices and
+abrupt turns, so it is harder to predict.
 
 **What it can't see:**
+Predictability does not tell us who wrote the text. Real people who write in
+plain words and short sentences (someone writing in a second language, a
+child, anyone writing plainly on purpose) get AI-like scores, and they are the
+people with the least room to argue back. The reverse also happens: ornate
+text full of rare words looks human to this signal, even if an AI wrote it.
 
 ### Signal two — the style signal
 
 **What it measures:**
+It measures the shape of the text without reading its meaning: how much
+sentence length varies, how much vocabulary repeats, and how much punctuation
+there is. Uniform shape scores high (more AI-like); varied shape scores low
+(more human-like).
 
 **Why that might differ between human and AI writing:**
+AI prose tends toward even, mid-length sentences and a narrower vocabulary.
+Human prose is lumpier, with a short sentence next to a long one.
 
 **What it can't see:**
+It cannot read, so edits that change the shape without changing the substance
+can push the score toward "human". For example:
+- Adding typos raises the type-token ratio (more distinct "words"), so the
+  text looks more human.
+- Splitting sentences at odd places: this adds short fragments, so
+  `sentence_length_spread` rises and the text looks more human. It also adds
+  full stops, so `punctuation_density` moves too.
+- Pasting in a quotation: another writer's vocabulary raises
+  `type_token_ratio`, and sentences of a different length can raise
+  `sentence_length_spread`. Both push the text toward "human".
 
 ### The combining rule
 
