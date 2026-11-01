@@ -104,7 +104,7 @@ Predictability does not tell us who wrote the text. Real people who write in
 plain words and short sentences (someone writing in a second language, a
 child, anyone writing plainly on purpose) get AI-like scores, and they are the
 people with the least room to argue back. The reverse also happens: ornate
-text full of rare words looks human to this signal, even if an AI wrote it.
+text full of rare words looks human to this signal, even if an AI wrote it. Typos and odd sentence breaks lower its score too: the same edits moved `model_score` from 0.754 to 0.505.
 
 ### Signal two — the style signal
 
@@ -121,8 +121,13 @@ Human prose is lumpier, with a short sentence next to a long one.
 **What it can't see:**
 It cannot read, so edits that change the shape without changing the substance
 can push the score toward "human". For example:
-- Adding typos raises the type-token ratio (more distinct "words"), so the
-  text looks more human.
+- Adding typos and a semicolon, and merging two sentences (five small edits to
+  the clearly-AI sample, no content word changed): combined score fell from
+  0.813 to 0.603. Most of the drop came from signal one (0.754 → 0.505), because
+  typos surprise the language model. Signal two moved from 0.871 to 0.702:
+  `sentence_length_spread` rose from 0.413 to 0.486 and `punctuation_density`
+  from 0.043 to 0.054 (one added semicolon). The type-token ratio would also
+  rise with typos, but it has weight 0 so it plays no part.
 - Splitting sentences at odd places: this adds short fragments, so
   `sentence_length_spread` rises and the text looks more human. It also adds
   full stops, so `punctuation_density` moves too.
@@ -132,20 +137,53 @@ can push the score toward "human". For example:
 
 ### The combining rule
 
-<!-- Write the rule in words, then give the numbers. What happens when the two
-     signals disagree? -->
-
 **The rule:**
+The combined score is a weighted average of the two signals, with equal
+weights. It is not resolved in favour of either signal. When the signals
+disagree, the average lands between them, so a strong lean on one side is
+softened by the other. I considered stronger rules (raising the AI threshold,
+lowering the style weight, capping a saturated style score) and chose to leave
+the rule simple and record where it fails. I could not justify any of those
+changes from the few texts I have, and each trades missed AI text for fewer
+accused writers.
 
 **The numbers:**
+- `combined = (0.5 × model_score + 0.5 × style_score) / (0.5 + 0.5)`, rounded
+  to 4 decimals, clamped to 0 to 1. Higher means more likely AI.
+- Inside `style_signal`, two raw measures are each mapped linearly to 0 to 1
+  between a human anchor (scores 0) and an AI anchor (scores 1), clamped, then
+  averaged 0.5 / 0.5:
+  - `sentence_length_spread`: human anchor 0.90, AI anchor 0.30
+  - `punctuation_density` (commas, semicolons, dashes per word): human anchor
+    0.09, AI anchor 0.04
+- `type_token_ratio` has weight 0. On my samples the AI text had the higher
+  value (0.979 against 0.874), the opposite of my assumption, so it is
+  computed but not used.
+- The anchors were chosen from six texts, so they are tuned on the data
+  they were first checked against.
+- Bands: human below 0.35, AI above 0.65, unsure between.
 
-**Where it lives:** `scoring.py::combine_signals`
-
-<!-- ⚠️ The grader checks your code against that line. If your rule lives
-     somewhere else, say where. -->
+**Where it lives:** `scoring.py::combine_signals` (weights and anchors are in
+`config.py`)
 
 **A case where my two signals split, and what my rule does with it:**
+`samples/clearly_human.json`: model_score 0.445, style_score 0.049, a gap of
+0.396. Signal one finds it moderately predictable. Signal two finds its
+sentence lengths very uneven (spread 1.128) and reads it as strongly human. The
+average, 0.247, lands in the human band. The style signal's confidence carries
+the text under 0.35, which signal one alone never did.
 
+**Where the rule fails:**
+`docs/formal_human.txt`, a formal paragraph written by a human. Both signals
+lean AI (model 0.644, style 1.000), so there is nothing to disagree about and
+averaging cannot help. Combined 0.822, higher than the clearly-AI sample
+(0.813), so it would be labelled high-confidence AI. The style score hit 1.000
+because its spread is ___ and its punctuation density is ___, both at or past the
+AI anchors. Formal prose has long, evenly built sentences with few commas, the
+same shape as the AI sample. Plain writers like Maria are not the only people
+this puts at risk. I am leaving it in place and recording it, because the
+trade has no free option: any change that clears this text also lets more
+AI text through.
 
 
 ---

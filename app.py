@@ -28,7 +28,7 @@ import uuid
 
 from flask import Flask, jsonify, request
 
-import audit
+import audit, stylometry, scoring, detector
 import config
 
 app = Flask(__name__)
@@ -136,8 +136,6 @@ def ping():
 @app.get("/health")
 def health():
     """Is the service up, and has the model been downloaded yet?"""
-    import detector
-
     loaded = detector._model is not None
     return jsonify({
         "ok": True,
@@ -201,7 +199,6 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
-    import detector
     # Flow: parse -> validate -> score -> log -> respond
     # 1. Parse: Invalid JSON, or JSON that is not an object (a bare list),
     # is a 400.
@@ -253,9 +250,13 @@ def submit():
             "message": "The text is too short to score.",
         }), 400
 
-    # 5. Placeholders until Milestones 4 and 5.
+    # 5. Signal two and the combined score (a pure function, cannot fail on valid text).
+    style_score = stylometry.style_signal(text)
+    combined_score = scoring.combine_signals(model_score, style_score)
+
+    # Placeholders until and 5.
     guess = "unsure"
-    confidence = model_score
+    confidence = combined_score
     label = "not built yet"
 
     # 6. Log the decision with the SAME content_id the client will receive.
@@ -265,6 +266,8 @@ def submit():
         creator_id=creator_id,
         guess=guess,
         model_score=model_score,
+        style_score=style_score,
+        combined_score=combined_score,
         label=label,
         status="decided",
     )
@@ -276,7 +279,7 @@ def submit():
         "confidence": confidence,
         "label": label,
         "model_score": model_score,
-        "style_score": None, # Milestone 4 replaces this
+        "style_score": style_score,
     }), 200
   
 @app.post("/appeal")

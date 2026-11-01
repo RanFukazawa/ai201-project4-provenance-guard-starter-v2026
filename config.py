@@ -48,12 +48,28 @@ DETECTOR_MAX_TOKENS = 400
 
 
 # ─── Scoring (Milestone 4) ───────────────────────────────────────────────────
-# How much each signal counts toward the combined score.
+# Signal two (stylometry.py): each raw measure is mapped linearly onto 0-1,
+# "higher = more AI-like": the human anchor scores 0, the AI anchor scores 1,
+# and values beyond either anchor are clamped.
 #
-# ⚠️ These are placeholders. Milestone 4 asks you to write your combining rule
-# down BEFORE you code it, and to put the numbers in your README. Whatever you
-# decide, it goes here.
+# The anchors were chosen from six texts (3 samples, 3 of docs/maria_{*}.txt poems),
+# so they are tuned on the data they were first checked against. Re-check them on
+# new texts.
 
+STYLE_SPREAD_HUMAN_ANCHOR = 0.90   # sentence_length_spread this high or more -> 0
+STYLE_SPREAD_AI_ANCHOR = 0.30      # this low or less -> 1
+
+STYLE_PUNCT_HUMAN_ANCHOR = 0.09    # punctuation_density this high or more -> 0
+STYLE_PUNCT_AI_ANCHOR = 0.04       # this low or less -> 1
+
+# Weights inside style_signal. TTR is 0: on my samples the AI text had the
+# HIGHER type-token ratio (0.979 vs 0.874), so the assumed direction wasn't
+# supported. The function is kept and tested, but not used.
+STYLE_WEIGHT_SPREAD = 0.5
+STYLE_WEIGHT_PUNCT = 0.5
+STYLE_WEIGHT_TTR = 0.0
+
+# Combining rule (scoring.combine_signals): a weighted average.
 WEIGHT_MODEL_SIGNAL = 0.5
 WEIGHT_STYLE_SIGNAL = 0.5
 
