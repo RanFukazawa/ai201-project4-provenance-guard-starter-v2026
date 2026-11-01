@@ -42,63 +42,88 @@ Two things worth knowing before you pick numbers:
   a **miss**.
 
 ---
-## 1.
+## 1. Plain human writing is rarely accused
 
-<!-- Your criterion. It must name a number. -->
+Of 10 plain-written human texts (by non-native or beginner writers), at most 1 is labelled high-confidence AI.
+This must hold in each of three trials, not on average.
 
+**How I'll check it:** submit all 10 to `/submit` and count `guess == "ai"`.
 
-
-**Why this target:**
-
-
-
----
-
-## 2.
-
-<!-- Your criterion. -->
-
-
-
-**Why this target:**
-
-
+**Why this target:** A wrongly accused writer loses trust in the site and has
+little room to argue back. A missed AI text costs the site much less. This is
+deliberately stricter than criterion 3, which allows more "unsure" results,
+because "unsure" is not an accusation.
 
 ---
 
-## 3.
+## 2. Clearly-AI and clearly-human text score far apart
 
-<!-- Your criterion. -->
+The combined score of `samples/clearly_ai.json` minus the combined score of
+`samples/clearly_human.json` is at least 0.35 in each of three trials.
 
+**How I'll check it:** read both combined scores from the audit log.
 
-
-**Why this target:**
-
-
-
----
-
-## 4.
-
-<!-- Your criterion. -->
-
-
-
-**Why this target:**
-
-
+**Why this target:** My thresholds are 0.35 and 0.65, so a gap of 0.30 is the
+bare minimum to land in opposite labels, with no slack. Signal one alone gave
+0.31, so a 0.35 target forces signal two to help instead of hurt.
 
 ---
 
-## 5.
+## 3. The human label can actually fire
 
-<!-- Your criterion. -->
+Of 10 human texts in an expressive, varied voice (like `clearly_human.json`),
+at least 5 are labelled high-confidence human in each of three trials.
 
+**How I'll check it:** submit all 10 and count `guess == "human"`.
 
+**Why this target:** If the human label almost never appears, the service only
+ever says "unsure", which is useless to the site. The bar is lower than
+criterion 1 on purpose: a text stuck in "unsure" is a small cost, while a
+wrong accusation is a large one. I expect this to be hard, because my human
+sample scored 0.4445 on signal one alone, above the 0.35 human threshold.
 
-**Why this target:**
+---
 
+## 4. Bad input never causes a 500
 
+Each of these 10 inputs to `/submit` returns the status in my API contract,
+and none returns 500, in each of three trials:
+
+| Input | Expected status |
+|---|---|
+| `text` missing | 400 |
+| `text` empty string | 400 |
+| `text` whitespace only | 400 |
+| `text` is a number | 400 |
+| 9 words | 400 |
+| exactly 10 words | 200 |
+| 3000 characters | 200 |
+| 3001 characters | 413 |
+| body is a bare JSON list | 400 |
+| body is not valid JSON | 400 |
+
+**How I'll check it:** a script that sends each input and compares the status.
+
+**Why this target:** A crash on malformed input is one of the most common real
+failures, and a 500 tells the caller nothing about what to fix. Listing the
+inputs makes it impossible to pass by testing only the easy ones.
+
+---
+
+## 5. An appeal always changes status and is always recorded
+
+Across 3 cases, in each of three trials:
+- A valid `content_id` returns 200 with status `under_review`, and exactly one
+  new `event: "appeal"` entry appears in the log.
+- A nonexistent `content_id` returns 404, and no appeal entry is written.
+- A second appeal on the same `content_id` returns 409, and no extra appeal
+  entry is written.
+
+**How I'll check it:** call `/appeal`, then read `/log` and count entries.
+
+**Why this target:** `/appeal` is the only thing between a wrong accusation
+and nothing at all. If an appeal is silently lost, the writer has no recourse
+and I can't audit it.
 
 ---
 
