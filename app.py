@@ -250,16 +250,14 @@ def submit():
             "message": "The text is too short to score.",
         }), 400
 
-    # 5. Signal two and the combined score (a pure function, cannot fail on valid text).
+    # 5. Signal two, the combined score, then the label and confidence.
     style_score = stylometry.style_signal(text)
     combined_score = scoring.combine_signals(model_score, style_score)
-
-    # Placeholders until and 5.
-    guess = "unsure"
-    confidence = combined_score
-    label = "not built yet"
+    guess, label = scoring.score_to_label(combined_score)
+    confidence = scoring.confidence(combined_score, guess)
 
     # 6. Log the decision with the SAME content_id the client will receive.
+    #    confidence is logged too: a reviewer needs to see what the writer saw.
     content_id = f"c_{uuid.uuid4().hex[:12]}"
     audit.log_decision(
         content_id=content_id,
@@ -270,9 +268,10 @@ def submit():
         combined_score=combined_score,
         label=label,
         status="decided",
+        confidence=confidence,
     )
-    
-    # 7. Respond: creator_id is deliberately not echoed (see the contract).
+
+    # 7. Respond: combined_score and creator_id stay internal (see the contract).
     return jsonify({
         "content_id": content_id,
         "guess": guess,
@@ -281,11 +280,14 @@ def submit():
         "model_score": model_score,
         "style_score": style_score,
     }), 200
-  
+
+MAX_REASONING_CHARS = 2000
+
 @app.post("/appeal")
 def appeal():
     """
-    A writer says you got it wrong. ← TODO — Milestone 5
+    A writer says we got it wrong. Validate first, so a 400, 404 or 409
+    writes nothing to the log.
 
     Expects JSON:
         {"content_id": "...", "reasoning": "..."}
@@ -302,14 +304,57 @@ def appeal():
     to the person on the other end. It's the only thing standing between a
     wrong accusation and nothing at all.
     """
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "invalid_json",
+            "message": "Send a JSON object.",
+        }), 400
 
-    # TODO: delete this and build the route.
+    content_id = payload.get("content_id")
+    if not isinstance(content_id, str) or not content_id.strip():
+        return jsonify({
+            "error": "bad_request",
+            "message": "Send JSON with a \"content_id\" string.",
+        }), 400
+    content_id = content_id.strip()
+
+    reasoning = payload.get("reasoning")
+    if not isinstance(reasoning, str):
+        reasoning = ""
+    reasoning = reasoning.strip()
+    if not reasoning or len(reasoning) > MAX_REASONING_CHARS:
+        return jsonify({
+            "error": "bad_request",
+            "message": f"Send a \"reasoning\" of 1 to {MAX_REASONING_CHARS} characters.",
+        }), 400
+
+    # A decision entry has no "event" key; an appeal has event == "appeal".
+    entries = audit.entries_for(content_id)
+    decisions = [e for e in entries if "event" not in e]
+    if not decisions:
+        return jsonify({
+            "error": "not_found",
+            "message": "No submission with that content_id.",
+        }), 404
+
+    if any(e.get("event") == "appeal" for e in entries):
+        return jsonify({
+            "error": "already_under_review",
+            "message": "This submission is already under review.",
+        }), 409
+
+    # Attribute the appeal to the original decision's creator, not the caller.
+    audit.log_appeal(
+        content_id=content_id,
+        creator_id=decisions[0].get("creator_id", "unknown"),
+        reasoning=reasoning,
+    )
     return jsonify({
-        "error": "not_implemented",
-        "message": "POST /appeal isn't built yet — see the TODO in app.py.",
-        "you_sent": payload,
-    }), 501
+        "content_id": content_id,
+        "status": "under_review",
+        "message": "Your appeal has been recorded and this submission is under review.",
+    }), 200
 
 
 # ── Already works ─────────────────────────────────────────────────────────────

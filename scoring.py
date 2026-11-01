@@ -18,6 +18,15 @@ you claim, so that line should read `scoring.py::combine_signals`.
 
 import config
 
+LABEL_HUMAN = "We think this was most likely written by a person."
+LABEL_UNSURE = (
+    "We can't tell for sure whether this was written by a person or by AI, "
+    "so we're not making a call."
+)
+LABEL_AI = (
+    "This looks more like AI-written text, but we can be wrong. "
+    "If you wrote it yourself, you can ask for a review."
+)
 
 def combine_signals(model_score: float, style_score: float) -> float:
     """
@@ -43,36 +52,41 @@ def combine_signals(model_score: float, style_score: float) -> float:
 
 def score_to_label(score: float) -> tuple[str, str]:
     """
-    Turn a score into a guess and the text a reader actually sees.
-    ← TODO (Milestone 5)
+    Turn a combined score into (guess, label_text).
+
+    A score exactly on a threshold takes the more cautious reading:
+    >= AI_THRESHOLD is "ai" and <= HUMAN_THRESHOLD is "human".
 
     Returns:
         (guess, label_text) — where `guess` is a short machine-readable string
         like "ai" / "human" / "unsure", and `label_text` is the full sentence
         shown to a person.
-
-    ⚠️ Write the label text for someone who has never heard the word
-    "threshold".
-
-        ✗ "human, 0.81 confidence"
-        ✓ "We think this was probably written by a person."
-
-    All three labels have to be **reachable**. If no score can produce one of
-    them, your ranges have a gap — and Milestone 5 asks you to submit text that
-    produces each one, which is how you'd find out.
-
-    The hardest one to write is "unsure". It has to admit uncertainty without
-    sounding like an accusation, because the person reading it may well have
-    written every word themselves. Your breakout asks your group what they'd
-    think if they got it on their own work. That question is the whole
-    milestone.
     """
-    # TODO: replace this — thresholds are in config.py
     if score >= config.AI_THRESHOLD:
-        return "ai", "PLACEHOLDER — write the high-confidence AI label."
+        return "ai", LABEL_AI
     if score <= config.HUMAN_THRESHOLD:
-        return "human", "PLACEHOLDER — write the high-confidence human label."
-    return "unsure", "PLACEHOLDER — write the unsure label."
+        return "human", LABEL_HUMAN
+    return "unsure", LABEL_UNSURE
+
+
+def confidence(score: float, guess: str) -> float:
+    """
+    How sure the system is in its own guess (not the AI score), 0-1.
+
+      human:  1 - score
+      ai:     score
+      unsure: the larger of score and 1 - score, capped at
+              min(1 - HUMAN_THRESHOLD, AI_THRESHOLD), so an "unsure" never
+              reports more confidence than a human or ai at its own boundary.
+    """
+    if guess == "human":
+        value = 1 - score
+    elif guess == "ai":
+        value = score
+    else:
+        cap = min(1 - config.HUMAN_THRESHOLD, config.AI_THRESHOLD)
+        value = min(max(score, 1 - score), cap)
+    return round(min(max(value, 0.0), 1.0), 4)
 
 
 def label_ranges() -> list[tuple[str, str]]:
