@@ -233,7 +233,7 @@ def submit():
             "message": f"Please submit {MAX_CHARS} characters or fewer.",
         }), 413
 
-    if len(text.strip()) < MIN_WORDS:
+    if len(text.split()) < MIN_WORDS:
         return jsonify({
             "error": "text_too_short",
             "message": f"Please submit at least {MIN_WORDS} words.",
