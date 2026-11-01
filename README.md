@@ -103,37 +103,58 @@ abrupt turns, so it is harder to predict.
 Predictability does not tell us who wrote the text. Real people who write in
 plain words and short sentences (someone writing in a second language, a
 child, anyone writing plainly on purpose) get AI-like scores, and they are the
-people with the least room to argue back. The reverse also happens: ornate
-text full of rare words looks human to this signal, even if an AI wrote it. Typos and odd sentence breaks lower its score too: the same edits moved `model_score` from 0.754 to 0.505.
+people with the least room to argue back. This is measured: Maria, a (fictional) Russian
+speaker with three years of English, wrote three plain poems that scored
+`model_score` 0.586, 0.599 and 0.604 (perplexity 36.2, 35.0 and 34.6). My
+human sample scored 0.4445 and my AI sample 0.7544, so her writing landed well
+above the human sample and roughly midway to the AI sample. The starter's notes
+say the reverse also happens, that ornate text full of rare words reads as
+human; I did not test that. Formal writing does not reliably read as human
+either: my formal paragraph scored 0.644. The score is also fragile: five
+small edits (three typos, a semicolon, a merged sentence) moved `model_score`
+for the AI sample from 0.754 to 0.505, and a trailing newline alone moved
+scores by up to 0.025, which is why the route strips `text`.
 
 ### Signal two — the style signal
 
 **What it measures:**
-It measures the shape of the text without reading its meaning: how much
-sentence length varies, how much vocabulary repeats, and how much punctuation
-there is. Uniform shape scores high (more AI-like); varied shape scores low
-(more human-like).
+The shape of the text, without reading its meaning. It combines two measures,
+each mapped to 0–1 and averaged equally: `sentence_length_spread` (standard
+deviation of sentence length divided by the mean; even sentences score as
+AI-like) and `punctuation_density` (commas, semicolons and dashes per word;
+sparse punctuation scores as AI-like). Higher means more AI-like. A third
+measure, `type_token_ratio`, is computed but has weight 0 (see below).
 
 **Why that might differ between human and AI writing:**
-AI prose tends toward even, mid-length sentences and a narrower vocabulary.
-Human prose is lumpier, with a short sentence next to a long one.
+AI prose tends toward even, mid-length sentences, while human prose is lumpier,
+with a short sentence next to a long one. On my samples spread separated them
+(AI 0.413, human 1.128). The punctuation direction is a guess that held on one
+AI and one human sample. I assumed AI vocabulary would be narrower, but the AI
+sample had the higher type-token ratio (0.979 against 0.874), so I gave it
+weight 0.
 
 **What it can't see:**
-It cannot read, so edits that change the shape without changing the substance
-can push the score toward "human". For example:
-- Adding typos and a semicolon, and merging two sentences (five small edits to
-  the clearly-AI sample, no content word changed): combined score fell from
-  0.813 to 0.603. Most of the drop came from signal one (0.754 → 0.505), because
-  typos surprise the language model. Signal two moved from 0.871 to 0.702:
-  `sentence_length_spread` rose from 0.413 to 0.486 and `punctuation_density`
-  from 0.043 to 0.054 (one added semicolon). The type-token ratio would also
-  rise with typos, but it has weight 0 so it plays no part.
-- Splitting sentences at odd places: this adds short fragments, so
-  `sentence_length_spread` rises and the text looks more human. It also adds
-  full stops, so `punctuation_density` moves too.
-- Pasting in a quotation: another writer's vocabulary raises
-  `type_token_ratio`, and sentences of a different length can raise
-  `sentence_length_spread`. Both push the text toward "human".
+It cannot read, so anything that changes the shape without changing the
+substance moves it, and some honest writing has the "AI" shape.
+- **Formal human prose.** My own formal paragraph has long, even sentences
+  and few commas (spread 0.193, punctuation 0.025). Both measures hit the AI
+  end, so style was 1.000 and the combined score 0.822, higher than my
+  clearly-AI sample (0.813).
+- **Plain writers.** Maria's journey poem has five even lines (spread 0.399),
+  almost the same as the AI sample (0.413).
+- **Cheap edits.** Five small edits to the AI sample (typos, one semicolon,
+  two sentences merged; no content word changed) moved style from 0.871 to
+  0.702. Spread rose from 0.413 to 0.486 and punctuation from 0.043 to 0.054
+  (the one semicolon). Most of the combined drop (0.813 to 0.603) came from
+  signal one.
+- **Untested predictions.** Splitting sentences at odd places should raise
+  spread, and pasting in a quotation should change sentence lengths. I did not
+  run either. Adding commas or dashes should push punctuation toward human
+  without changing a word.
+- **Line breaks.** I count a newline as a sentence end, so hard-wrapped prose
+  is chopped into similar-length pieces and looks more AI-like.
+- **Tuned anchors.** The anchors (0.90/0.30 and 0.09/0.04) were chosen from
+  six texts, then checked against a seventh that broke them.
 
 ### The combining rule
 
@@ -320,15 +341,30 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* Working code for the three stylometry measures, with
+  help deciding how to handle text length and which direction each measure
+  points.
+- *What came back:* A moving-average type-token ratio, with "higher means more
+  human" assumed, and a note that the punctuation direction was only a guess.
+- *What I changed:* I printed the raw values on my six texts before trusting
+  any of it. The AI sample had the higher type-token ratio (0.979 against
+  0.874), the opposite of the assumption, so I set its weight to 0 in
+  `config.py`, kept the function, and wrote "tested, not used" in the README.
+  That replaced my own Milestone 1 prediction about typos and vocabulary.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* Polish for my three label drafts.
+- *What came back:* My "unsure" draft said the text "looks like it is
+  AI-written and human written". The feedback was that this describes the text
+  as a mix, which a real writer could read as an accusation, and that my AI
+  label told writers to re-check their own work instead of pointing to the
+  appeal. I got rewritten versions of all three.
+- *What I changed:* I used the new "unsure" wording, which says what the
+  system can't tell and not what the text is. I kept the AI threshold at 0.65
+  against the suggestion to raise it to 0.75, because 0.75 changed no label on
+  my six texts and six texts cannot justify a more precise number. I then
+  submitted one text per label to confirm all three are reachable.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
