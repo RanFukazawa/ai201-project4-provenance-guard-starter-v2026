@@ -149,6 +149,8 @@ def health():
 
 
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
+MIN_WORDS = 10
+MAX_CHARS = 3000
 
 @app.post("/submit")
 # @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
@@ -199,37 +201,82 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
-    payload = request.get_json(silent=True) or {}
-    text = payload.get("text")
-    creator_id = payload.get("creator_id", "unknown")
-
-    # Step 3 - one real signal that we first tested from the terminal
-    # python detector.py "some text"
     import detector
-    model_score = detector.model_signal(text)
+    # Flow: parse -> validate -> score -> log -> respond
+    # 1. Parse: Invalid JSON, or JSON that is not an object (a bare list),
+    # is a 400.
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "invalid_json",
+            "message": "Send a JSON object.",
+        }), 400
 
-    # Step 2 - JSON goes in: pull text and creator_id out of the body
+    # 2. Pull out the fields: A missing, empty, or non-string creator_id 
+    # is stored as "unknown".
+    text = payload.get("text")
+    creator_id = payload.get("creator_id")
+    if not isinstance(creator_id, str) or not creator_id.strip():
+        creator_id = "unknown"
+
+    # 3. Validate BEFORE any model work.
     if not isinstance(text, str) or not text.strip():
-        return jsonify({"error": "bad_request", "message": "Send JSON with a non-empty\"text\"."}), 400
+        return jsonify({
+            "error": "bad_request",
+            "message": "Send JSON with a non-empty \"text\" string.",
+        }), 400
 
-    # Step 4 - log the decision. The content_id is what /appeal needs later.
+    text = text.strip()
+    if len(text) > MAX_CHARS:
+        return jsonify({
+            "error": "text_too_long",
+            "message": f"Please submit {MAX_CHARS} characters or fewer.",
+        }), 413
+
+    if len(text.strip()) < MIN_WORDS:
+        return jsonify({
+            "error": "text_too_short",
+            "message": f"Please submit at least {MIN_WORDS} words.",
+        }), 400
+
+    # 4. Score with signal one: Backstop for the two ways the detector can fail.
+    try:
+        model_score = detector.model_signal(text)
+    except detector.DetectorUnavailable:
+        return jsonify({
+            "error": "detector_unavailable",
+            "message": "The scoring model is not available right now. Try again later.",
+        }), 503
+    except ValueError:
+        return jsonify({
+            "error": "text_too_short",
+            "message": "The text is too short to score.",
+        }), 400
+
+    # 5. Placeholders until Milestones 4 and 5.
+    guess = "unsure"
+    confidence = model_score
+    label = "not built yet"
+
+    # 6. Log the decision with the SAME content_id the client will receive.
     content_id = f"c_{uuid.uuid4().hex[:12]}"
     audit.log_decision(
         content_id=content_id,
         creator_id=creator_id,
+        guess=guess,
         model_score=model_score,
+        label=label,
         status="decided",
     )
-
-    # Step 1 - the route answers. Hardcoded without any logic yet.
+    
+    # 7. Respond: creator_id is deliberately not echoed (see the contract).
     return jsonify({
-        "content_id": "hardcoded",
-        "creator_id": creator_id,
-        "guess": "unsure",
-        "confidence": model_score,
-        "label": "not built yet",
+        "content_id": content_id,
+        "guess": guess,
+        "confidence": confidence,
+        "label": label,
         "model_score": model_score,
-        "style_score": None,
+        "style_score": None, # Milestone 4 replaces this
     }), 200
   
 @app.post("/appeal")

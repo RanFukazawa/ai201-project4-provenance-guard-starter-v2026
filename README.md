@@ -176,6 +176,46 @@ can push the score toward "human". For example:
 
 <!-- One submission and one appeal, pasted as text: the request, the response,
      and the log entries. -->
+```bash
+{
+  "count": 3,
+  "entries": [
+    {
+      "combined_score": null,
+      "content_id": "c_f7200d9745b0",
+      "creator_id": "t",
+      "guess": "unsure",
+      "label": "not built yet",
+      "model_score": 0.9099,
+      "status": "decided",
+      "style_score": null,
+      "timestamp": "2026-11-01T06:31:08+00:00"
+    },
+    {
+      "combined_score": null,
+      "content_id": "c_25e0bc449b23",
+      "creator_id": "t",
+      "guess": "unsure",
+      "label": "not built yet",
+      "model_score": 0.9975,
+      "status": "decided",
+      "style_score": null,
+      "timestamp": "2026-11-01T06:31:24+00:00"
+    },
+    {
+      "combined_score": null,
+      "content_id": "c_0ce2e3f71730",
+      "creator_id": "maria",
+      "guess": "unsure",
+      "label": "not built yet",
+      "model_score": 0.5188,
+      "status": "decided",
+      "style_score": null,
+      "timestamp": "2026-11-01T06:33:30+00:00"
+    }
+  ]
+}
+```
 
 **A submission**
 
