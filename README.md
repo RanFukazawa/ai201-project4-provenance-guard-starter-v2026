@@ -197,15 +197,31 @@ AI text through.
 
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
-| high-confidence human |  |  |
-| unsure |  |  |
-| high-confidence AI |  |  |
+| high-confidence human | 0.00 – 0.35 | We think this was most likely written by a person. |
+| unsure | 0.35 – 0.65 | We can't tell for sure whether this was written by a person or by AI, so we're not making a call. |
+| high-confidence AI | 0.65 – 1.00 | This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review. |
+
+A score exactly on a boundary (0.35 or 0.65) takes the label of the more
+cautious side: 0.65 counts as AI and 0.35 counts as human, matching the
+comparisons in `scoring.py::score_to_label`.
 
 **Why I worded the "unsure" one this way:**
-<!-- It's the hardest of the three. It has to admit uncertainty without
-     sounding like an accusation, because the person reading it may well have
-     written every word themselves. -->
+The "unsure" label is the one most people will see, and many of them wrote
+every word themselves. So it says what the system could not tell, not what the
+text is. A line like "this looks like both AI and human writing" describes the
+text as a mix, which a writer could read as "you used AI for part of this".
+"We can't tell for sure" and "we're not making a call" put the uncertainty on
+the system. It has no score, no word like "threshold", and no instruction to
+the writer, because an unsure result is not an accusation and gives them
+nothing to fix.
 
+**Why I kept the AI threshold at 0.65:**
+Raising it to 0.75 changes no label on my six test texts: `clearly_ai` (0.813)
+stays AI and `docs/maria_{*}.txt` three poems (0.511 to 0.543) stay unsure. Six texts cannot
+justify a more precise number, so I kept the original. Her margin below the AI
+line is about 0.11. The cost is that a writer whose text scores just under 0.65
+is not accused, while a human text that scores above it is, as `formal_human`
+(0.822) shows. I will test whether this holds against the criteria in unit 8.
 
 
 ---
@@ -214,47 +230,6 @@ AI text through.
 
 <!-- One submission and one appeal, pasted as text: the request, the response,
      and the log entries. -->
-```bash
-{
-  "count": 3,
-  "entries": [
-    {
-      "combined_score": null,
-      "content_id": "c_f7200d9745b0",
-      "creator_id": "t",
-      "guess": "unsure",
-      "label": "not built yet",
-      "model_score": 0.9099,
-      "status": "decided",
-      "style_score": null,
-      "timestamp": "2026-11-01T06:31:08+00:00"
-    },
-    {
-      "combined_score": null,
-      "content_id": "c_25e0bc449b23",
-      "creator_id": "t",
-      "guess": "unsure",
-      "label": "not built yet",
-      "model_score": 0.9975,
-      "status": "decided",
-      "style_score": null,
-      "timestamp": "2026-11-01T06:31:24+00:00"
-    },
-    {
-      "combined_score": null,
-      "content_id": "c_0ce2e3f71730",
-      "creator_id": "maria",
-      "guess": "unsure",
-      "label": "not built yet",
-      "model_score": 0.5188,
-      "status": "decided",
-      "style_score": null,
-      "timestamp": "2026-11-01T06:33:30+00:00"
-    }
-  ]
-}
-```
-
 **A submission**
 
 <!-- The response needs content_id, guess, confidence, label, AND both
@@ -263,25 +238,34 @@ AI text through.
      diagnostics. -->
 
 ```bash
-$ curl -X POST http://127.0.0.1:5000/submit \
-  -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+$ curl -s -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/json" -d @samples/clearly_human.json
 ```
 
 ```json
-
+{
+  "confidence": 0.7533,
+  "content_id": "c_a27bf463c89b",
+  "guess": "human",
+  "label": "We think this was most likely written by a person.",
+  "model_score": 0.4445,
+  "style_score": 0.0489
+}
 ```
 
 **An appeal**
 
 ```bash
-$ curl -X POST http://127.0.0.1:5000/appeal \
+$ curl -s -X POST http://127.0.0.1:5000/appeal \
   -H "Content-Type: application/json" \
-  -d '{"content_id": "...", "reasoning": "..."}'
+  -d "{\"content_id\": \"c_88710dd715a1\", \"reasoning\": \"I wrote this myself as part of my English class.\"}"
 ```
 
 ```json
-
+{
+  "content_id": "c_88710dd715a1",
+  "message": "Your appeal has been recorded and this submission is under review.",
+  "status": "under_review"
+}
 ```
 
 **What the log shows afterwards**
@@ -291,7 +275,43 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 ```
 
 ```json
-
+{
+  "count": 3,
+  "entries": [
+    {
+      "combined_score": 0.2467,
+      "confidence": 0.7533,
+      "content_id": "c_a27bf463c89b",
+      "creator_id": "demo_instructor",
+      "guess": "human",
+      "label": "We think this was most likely written by a person.",
+      "model_score": 0.4445,
+      "status": "decided",
+      "style_score": 0.0489,
+      "timestamp": "2026-11-01T09:22:23+00:00"
+    },
+    {
+      "combined_score": 0.5309,
+      "confidence": 0.5309,
+      "content_id": "c_88710dd715a1",
+      "creator_id": "maria",
+      "guess": "unsure",
+      "label": "We can't tell for sure whether this was written by a person or by AI, so we're not making a call.",
+      "model_score": 0.5987,
+      "status": "decided",
+      "style_score": 0.4631,
+      "timestamp": "2026-11-01T09:23:08+00:00"
+    },
+    {
+      "content_id": "c_88710dd715a1",
+      "creator_id": "maria",
+      "event": "appeal",
+      "reasoning": "I wrote this myself as part of my English class.",
+      "status": "under_review",
+      "timestamp": "2026-11-01T09:23:51+00:00"
+    }
+  ]
+}
 ```
 
 ---
