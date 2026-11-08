@@ -372,24 +372,41 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 ## Rate Limiting
 
-**My limits:** ___ per minute, ___ per day
+**My limits:** `5` per minute, `50` per day
 
 **Why those numbers and not others:**
 <!-- Think about two people: a real writer submitting their own work a few
      times an hour, and a script sending a thousand variations to map your
      thresholds. Your numbers have to be liveable for the first and hostile to
      the second. -->
+A real writer submits their own work a few times in a sitting and perhaps ten
+times in a day, so 5 per minute never gets in their way, and if they hit it
+they wait about 12 seconds. 50 per day is far above what any writer needs. A
+script mapping my thresholds needs hundreds or thousands of variations, so at
+50 a day it would need about 20 days per identity. Each submission also runs a
+language model on my laptop, so a low per-minute limit caps the compute one
+caller can force. I could lower the daily limit further without hurting a real
+writer; I stopped at 50 because I have no evidence yet of what a real writer
+needs.
 
 **What a caller counts as:** <!-- per address, or per creator_id? They fail
-differently — one script can look like a thousand callers, and one household
-can look like one. -->
+    differently — one script can look like a thousand callers, and one household
+    can look like one. -->
+the `creator_id` in the request body, or the IP address when there isn't one. 
+The weakness: the caller chooses `creator_id`, so a script that sends a new one 
+with every request gets a fresh limit each time and is never slowed. Keying on 
+IP address would fix that and instead make a classroom or household share one limit.
+I kept `creator_id` because it matches how a real writer behaves: each writer
+gets their own limit, and a household or classroom sharing one address is not
+throttled together. The cost is that the caller chooses the id, so a script that
+sends a new `creator_id` with every request gets a fresh limit each time.
 
 **The run of status codes when I pushed past it:**
 
 <!-- python run_attacks.py --flood 15 -->
 
 ```
-
+200 200 200 200 200 429 429 429 429 429 429 429 429 429 429
 ```
 
 ---
@@ -494,22 +511,22 @@ that produced it:
 
      SUBMISSION CHECKLIST — unit 7
 
-       [ ] criteria.md has five numbered criteria, each naming a target
-       [ ] Each has a reason underneath
-       [ ] POST /submit returns content_id, guess, confidence, label,
+       [X] criteria.md has five numbered criteria, each naming a target
+       [X] Each has a reason underneath
+       [X] POST /submit returns content_id, guess, confidence, label,
            model_score and style_score
-       [ ] Two signals that measure DIFFERENT things, each with a named blind spot
-       [ ] Three label variants, all reachable, written out in full
-       [ ] POST /appeal changes status and writes to the log
-       [ ] Signals and Scoring names scoring.py::combine_signals
-       [ ] Sample Run: a submission AND an appeal, as pasted text
-       [ ] At least four new commits
-       [ ] Repository URL submitted — WRITE IT DOWN
+       [X] Two signals that measure DIFFERENT things, each with a named blind spot
+       [X] Three label variants, all reachable, written out in full
+       [X] POST /appeal changes status and writes to the log
+       [X] Signals and Scoring names scoring.py::combine_signals
+       [X] Sample Run: a submission AND an appeal, as pasted text
+       [X] At least four new commits
+       [X] Repository URL submitted — WRITE IT DOWN
 
      SUBMISSION CHECKLIST — unit 8
 
-       [ ] Rate limiting on /submit, with your numbers justified
-       [ ] The pasted run of status codes showing 429
+       [X] Rate limiting on /submit, with your numbers justified
+       [X] The pasted run of status codes showing 429
        [ ] Audit log with all nine fields, recording rejections too
        [ ] The attack set run IN FULL, every input with an outcome
        [ ] Ten audit log entries pasted as text

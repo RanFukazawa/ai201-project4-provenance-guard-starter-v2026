@@ -150,8 +150,19 @@ def health():
 MIN_WORDS = 10
 MAX_CHARS = 3000
 
+def _reject(creator_id, reason, status_code, message, **extra):
+    """Log a refused request, then return the error in the contract's shape."""
+    audit.log_rejection(
+        creator_id=creator_id,
+        reason=reason,
+        status_code=status_code,
+        endpoint=request.path,
+        **extra,
+    )
+    return jsonify({"error": reason, "message": message}), status_code
+
 @app.post("/submit")
-# @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
+@limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
     """
     Take a piece of text, decide about it, log the decision, answer.
@@ -204,10 +215,7 @@ def submit():
     # is a 400.
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
-        return jsonify({
-            "error": "invalid_json",
-            "message": "Send a JSON object.",
-        }), 400
+        return _reject("unknown", "invalid_json", 400, "Send a JSON object.")
 
     # 2. Pull out the fields: A missing, empty, or non-string creator_id 
     # is stored as "unknown".
@@ -218,37 +226,29 @@ def submit():
 
     # 3. Validate BEFORE any model work.
     if not isinstance(text, str) or not text.strip():
-        return jsonify({
-            "error": "bad_request",
-            "message": "Send JSON with a non-empty \"text\" string.",
-        }), 400
+        return _reject(creator_id, "bad_request", 400,
+                       "Send JSON with a non-empty \"text\" string.")
 
     text = text.strip()
     if len(text) > MAX_CHARS:
-        return jsonify({
-            "error": "text_too_long",
-            "message": f"Please submit {MAX_CHARS} characters or fewer.",
-        }), 413
+        return _reject(creator_id, "text_too_long", 413,
+                       f"Please submit {MAX_CHARS} characters or fewer.",
+                       text_length=len(text))
 
     if len(text.split()) < MIN_WORDS:
-        return jsonify({
-            "error": "text_too_short",
-            "message": f"Please submit at least {MIN_WORDS} words.",
-        }), 400
+        return _reject(creator_id, "text_too_short", 400,
+                       f"Please submit at least {MIN_WORDS} words.",
+                       word_count=len(text.split()))
 
     # 4. Score with signal one: Backstop for the two ways the detector can fail.
     try:
         model_score = detector.model_signal(text)
     except detector.DetectorUnavailable:
-        return jsonify({
-            "error": "detector_unavailable",
-            "message": "The scoring model is not available right now. Try again later.",
-        }), 503
+        return _reject(creator_id, "detector_unavailable", 503,
+                       "The scoring model is not available right now. Try again later.")
     except ValueError:
-        return jsonify({
-            "error": "text_too_short",
-            "message": "The text is too short to score.",
-        }), 400
+        return _reject(creator_id, "text_too_short", 400,
+                       "The text is too short to score.")
 
     # 5. Signal two, the combined score, then the label and confidence.
     style_score = stylometry.style_signal(text)
@@ -306,17 +306,12 @@ def appeal():
     """
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
-        return jsonify({
-            "error": "invalid_json",
-            "message": "Send a JSON object.",
-        }), 400
+        return _reject("unknown", "invalid_json", 400, "Send a JSON object.")
 
     content_id = payload.get("content_id")
     if not isinstance(content_id, str) or not content_id.strip():
-        return jsonify({
-            "error": "bad_request",
-            "message": "Send JSON with a \"content_id\" string.",
-        }), 400
+        return _reject("unknown", "bad_request", 400,
+                       "Send JSON with a \"content_id\" string.")
     content_id = content_id.strip()
 
     reasoning = payload.get("reasoning")
@@ -333,16 +328,14 @@ def appeal():
     entries = audit.entries_for(content_id)
     decisions = [e for e in entries if "event" not in e]
     if not decisions:
-        return jsonify({
-            "error": "not_found",
-            "message": "No submission with that content_id.",
-        }), 404
+        return _reject("unknown", "not_found", 404,
+                       "No submission with that content_id.", content_id=content_id)
 
     if any(e.get("event") == "appeal" for e in entries):
-        return jsonify({
-            "error": "already_under_review",
-            "message": "This submission is already under review.",
-        }), 409
+        return _reject(decisions[0].get("creator_id", "unknown"),
+                       "already_under_review", 409,
+                       "This submission is already under review.",
+                       content_id=content_id)
 
     # Attribute the appeal to the original decision's creator, not the caller.
     audit.log_appeal(
