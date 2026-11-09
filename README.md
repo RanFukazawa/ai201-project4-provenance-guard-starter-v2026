@@ -933,21 +933,37 @@ results files.
 
 **Diagnoses**
 
-<!-- For each miss AND each broken attack: the stage and the mechanism.
+*One problem under most of the misses:* both signals measure surface features (predictability and the shape of sentences and punctuation), and genuine human writing in formal, poetic, or uniform styles has the "AI" shape on one of them. The combining rule cannot fix that, because it only averages the two.
 
-     Your service has five stages: the route, signal one, signal two, the
-     combining rule, and the label mapping.
+**Criterion 1 (MISSED, 4/10 in every trial).**
 
-     Not a diagnosis:  "The evasion attacks got through."
-     A diagnosis:      "Four evasion inputs got through. All four had typos
-                        added to AI-generated text. My second signal measures
-                        word variety, and typos raise word variety — so it read
-                        them as more human. My combining rule weights that
-                        signal at 0.6, so it dragged the whole score down."
+*Stage:* signal two.
 
-     Look for a pattern. Five failures on one signal is one problem, not five. -->
+*Mechanism:* My seven plain texts are academic essays and reports. They have long, even sentences and few commas, semicolons or dashes, so `sentence_length_spread` falls at or below the AI anchor (0.30) and `punctuation_density` at or below 0.04. Those anchors define that shape as AI, so `style_score` saturates at 1.0 and stops carrying information. This is the same failure as `formal_human` in unit 7 (spread 0.193, punctuation 0.025, combined 0.822). In plain_01 and plain_05 signal one disagreed and saved the writer, which is why the combining rule's averaging helped there.
 
+*Evidence:* Four texts were labelled `ai`: plain_02 (model 0.511, style 1.000, combined 0.755), plain_03 (0.632, 0.997, 0.815), plain_04 (0.678, 0.819, 0.748) and plain_07 (0.530, 0.777, 0.654). plain_01 (style 1.000) and plain_05 (style 0.952) stayed `unsure` only because their model scores were low (0.220 and 0.336). Maria's three poems stayed `unsure` (0.511 to 0.543). The target of at most 1 in 10 was missed by three in every trial.
 
+**Criterion 3 (MISSED, 1/10 in every trial).**
+
+*Stage:* signal one and signal two, with the combining rule unable to resolve the split.
+
+*Mechanism:* Different kinds of human text fail on different signals.
+- *Signal one* reads repetition as predictable. Repeated lines ("She will cry like a red / blue / yellow") and common words are easy for gpt2 to predict, so perplexity drops and `model_score` rises. The same mechanism put EV10 (a repeated stanza) at model 0.979.
+- *Signal two* reads short, uniform casual notes as AI. Three to six sentences of similar length give a low spread, so informal voice (typos, "lol", "ON CAMPUS!") is invisible to a signal that only counts lengths and commas.
+- *Combining rule:* a `human` label needs a combined score of 0.35 or below, so both signals must be low. An equal-weight average lets one signal's error cancel the other's correct reading. No text had both low except expressive_03, and it passed by 0.003.
+
+*Evidence:* The poems have correct, low style scores but high model scores: expressive_01 (model 0.684, style 0.265, combined 0.475) and expressive_02 (0.846, 0.157, 0.501), both `unsure`. The casual notes have the reverse: expressive_09 (model 0.452, style 0.843) and expressive_10 (0.372, 0.843) are `unsure`. The only `human` was expressive_03 (0.436, 0.258, 0.347). The script and the two Anne Frank entries (expressive_04, 05, 06) were `ai`; a training-data effect on signal one is possible for the diary entries but I did not test it.
+
+**Broken attacks.**
+
+- *FP01–FP07 (7 broke).* Stage: signal two mainly, then both signals. Both agreed on `ai` (style 0.64 to 1.0, model 0.62 to 0.88), so averaging could not help. This is the same mechanism as criterion 1.
+- *EV01, EV05, EV08, PI02 (4 broke).* Stage: signal one. Typos, unusual tokens or an injected prefix raise perplexity, so `model_score` fell (0.16, 0.32, 0.25, and 0.20 for PI02). A control confirmed it for PI02: the same body scored 0.668 alone and 0.456 with the prefix. EV01 targeted word variety, but `type_token_ratio` has weight 0, so signal one's sensitivity is what moved it.
+- *MF07 (1 broke).* Stage: signal two. `words()` matches only `a-z`, so Arabic text gives zero words and the style signal returns its neutral fallback values (0.5167). The `ai` label rests on signal one alone.
+- *EV02, EV06, EV07 (3 broke).* These moved to `unsure` with style scores of 0.42 to 0.54. I have not inspected their text, so I do not claim a mechanism for them. ___ (check with `--show` before writing this line).
+
+**The criteria I met, and how strong that is.**
+
+Criterion 2 passed (0.566 against 0.35), but it was always going to: it compares the two easiest samples in my project, and I tuned the style anchors partly on them. It is the criterion I would tighten, for example by measuring the gap over several AI and human texts, including `formal_human`, where the signals fail. Criteria 4 and 5 passed against inputs I chose myself. They do not cover findings from the attack set such as MF07 and FP08 (an 8-word genuine text refused by the 10-word minimum).
 
 ---
 
