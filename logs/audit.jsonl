@@ -162,3 +162,5 @@
 {"timestamp": "2026-11-09T06:20:36+00:00", "content_id": "c_c8d8c8c3da6c", "creator_id": "eval_c5_t3_1794205236", "event": "appeal", "status": "under_review", "reasoning": "I wrote this myself."}
 {"timestamp": "2026-11-09T06:20:36+00:00", "creator_id": "unknown", "event": "rejected", "status": "rejected", "reason": "not_found", "status_code": 404, "endpoint": "/appeal", "content_id": "c_doesnotexist"}
 {"timestamp": "2026-11-09T06:20:36+00:00", "creator_id": "eval_c5_t3_1794205236", "event": "rejected", "status": "rejected", "reason": "already_under_review", "status_code": 409, "endpoint": "/appeal", "content_id": "c_c8d8c8c3da6c"}
+{"timestamp": "2026-11-09T06:58:58+00:00", "content_id": "c_76dc20dd542c", "creator_id": "demo_instructor", "guess": "human", "model_score": 0.4445, "style_score": 0.0489, "combined_score": 0.2467, "label": "We think this was most likely written by a person.", "status": "decided", "confidence": 0.7533}
+{"timestamp": "2026-11-09T06:59:39+00:00", "content_id": "c_76dc20dd542c", "creator_id": "demo_instructor", "event": "appeal", "status": "under_review", "reasoning": "Testing the appeal path with a sample text."}

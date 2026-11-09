@@ -51,9 +51,10 @@ with a 400 before any signal runs. If the model cannot load
 AI-like). Returns it to the route.
 
 **Step 3: Signal two (`stylometry.py::style_signal`).** Receives the text. Adds
-a 0-1 score for the shape of the text (sentence-length variation, vocabulary
-repetition, punctuation), with no regard for meaning (higher = more AI-like).
-Returns it to the route.
+a 0-1 score for the shape of the text, using sentence-length variation and
+punctuation density, with no regard for meaning (higher = more AI-like). A
+third measure, vocabulary repetition, is computed but has weight 0. Returns the
+score to the route.
 
 **Step 4: The combining rule (`scoring.py::combine_signals`).** Receives the two
 scores. Adds one combined 0-1 score (higher = more AI-like). Returns it to the
@@ -166,7 +167,9 @@ softened by the other. I considered stronger rules (raising the AI threshold,
 lowering the style weight, capping a saturated style score) and chose to leave
 the rule simple and record where it fails. I could not justify any of those
 changes from the few texts I have, and each trades missed AI text for fewer
-accused writers.
+accused writers. 
+
+*Unit 8 note:* I did raise the AI threshold later, to 0.80, after the attack set showed real writers in the AI band.
 
 **The numbers:**
 - `combined = (0.5 × model_score + 0.5 × style_score) / (0.5 + 0.5)`, rounded
@@ -182,7 +185,9 @@ accused writers.
   computed but not used.
 - The anchors were chosen from six texts, so they are tuned on the data
   they were first checked against.
-- Bands: human below 0.35, AI above 0.65, unsure between.
+- - Bands in unit 7: human below 0.35, AI above 0.65, unsure between. In unit 8 I
+  raised the AI threshold to 0.80 (see The Improvement), so the unsure band is
+  now 0.35 to 0.80.
 
 **Where it lives:** `scoring.py::combine_signals` (weights and anchors are in
 `config.py`)
@@ -199,7 +204,7 @@ the text under 0.35, which signal one alone never did.
 lean AI (model 0.644, style 1.000), so there is nothing to disagree about and
 averaging cannot help. Combined 0.822, higher than the clearly-AI sample
 (0.813), so it would be labelled high-confidence AI. The style score hit 1.000
-because its spread is ___ and its punctuation density is ___, both at or past the
+because its spread is 0.193 and its punctuation density is 0.025, both at or past the
 AI anchors. Formal prose has long, evenly built sentences with few commas, the
 same shape as the AI sample. Plain writers like Maria are not the only people
 this puts at risk. I am leaving it in place and recording it, because the
@@ -211,20 +216,15 @@ AI text through.
 
 ## Label Variants
 
-<!-- The exact text of all three labels, as a reader would see them, and the
-     score range each covers.
-
-     Write them for someone who has never heard the word "threshold". -->
-
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
 | high-confidence human | 0.00 – 0.35 | We think this was most likely written by a person. |
-| unsure | 0.35 – 0.65 | We can't tell for sure whether this was written by a person or by AI, so we're not making a call. |
-| high-confidence AI | 0.65 – 1.00 | This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review. |
+| unsure | 0.35 – 0.80 | We can't tell for sure whether this was written by a person or by AI, so we're not making a call. |
+| high-confidence AI | 0.80 – 1.00 | This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review. |
 
-A score exactly on a boundary (0.35 or 0.65) takes the label of the more
-cautious side: 0.65 counts as AI and 0.35 counts as human, matching the
-comparisons in `scoring.py::score_to_label`.
+A score exactly on a boundary takes the more cautious side: 0.80 counts as AI
+and 0.35 counts as human, matching `scoring.py::score_to_label`.
+
 
 **Why I worded the "unsure" one this way:**
 The "unsure" label is the one most people will see, and many of them wrote
@@ -235,6 +235,10 @@ text as a mix, which a writer could read as "you used AI for part of this".
 the system. It has no score, no word like "threshold", and no instruction to
 the writer, because an unsure result is not an accusation and gives them
 nothing to fix.
+
+*Unit 8 update:* the attack set showed real writers labelled `ai`, so I raised
+the threshold to 0.80. That reverses the decision above. See The Improvement for
+the evidence and the cost.
 
 **Why I kept the AI threshold at 0.65:**
 Raising it to 0.75 changes no label on my six test texts: `clearly_ai` (0.813)
@@ -265,7 +269,7 @@ $ curl -s -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/jso
 ```json
 {
   "confidence": 0.7533,
-  "content_id": "c_a27bf463c89b",
+  "content_id": "c_76dc20dd542c",
   "guess": "human",
   "label": "We think this was most likely written by a person.",
   "model_score": 0.4445,
@@ -278,12 +282,12 @@ $ curl -s -X POST http://127.0.0.1:5000/submit -H "Content-Type: application/jso
 ```bash
 $ curl -s -X POST http://127.0.0.1:5000/appeal \
   -H "Content-Type: application/json" \
-  -d "{\"content_id\": \"c_88710dd715a1\", \"reasoning\": \"I wrote this myself as part of my English class.\"}"
+  -d "{\"content_id\": \"c_76dc20dd542c\", \"reasoning\": \"Testing the appeal path with a sample text.\"}"
 ```
 
 ```json
 {
-  "content_id": "c_88710dd715a1",
+  "content_id": "c_76dc20dd542c",
   "message": "Your appeal has been recorded and this submission is under review.",
   "status": "under_review"
 }
@@ -339,7 +343,7 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 ## How I Used AI
 
-**Moment 1**
+**Moment 1: the type-token ratio (unit 7)**
 
 - *What I asked for:* Working code for the three stylometry measures, with
   help deciding how to handle text length and which direction each measure
@@ -350,9 +354,9 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
   any of it. The AI sample had the higher type-token ratio (0.979 against
   0.874), the opposite of the assumption, so I set its weight to 0 in
   `config.py`, kept the function, and wrote "tested, not used" in the README.
-  That replaced my own Milestone 1 prediction about typos and vocabulary.
+  That replaced my own earlier prediction about typos and vocabulary.
 
-**Moment 2**
+**Moment 2: the label wording (unit 7)**
 
 - *What I asked for:* Polish for my three label drafts.
 - *What came back:* My "unsure" draft said the text "looks like it is
@@ -362,9 +366,54 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
   appeal. I got rewritten versions of all three.
 - *What I changed:* I used the new "unsure" wording, which says what the
   system can't tell and not what the text is. I kept the AI threshold at 0.65
-  against the suggestion to raise it to 0.75, because 0.75 changed no label on
-  my six texts and six texts cannot justify a more precise number. I then
-  submitted one text per label to confirm all three are reachable.
+  against the suggestion to raise it, because six texts could not justify a
+  more precise number. I then submitted one text per label to confirm all
+  three are reachable. (In unit 8 the attack set made me reverse the threshold
+  decision.)
+
+**Moment 3: a wrong claim, corrected by my own data (unit 8)**
+
+- *What I asked for:* A prediction of which of my expressive texts would
+  earn the `human` label.
+- *What came back:* The claim that my short casual notes were the likeliest to
+  reach `human`.
+- *What I changed:* I ran the texts. All four notes came back `unsure` (style
+  0.61 to 0.84), and the only `human` was a poem. I wrote the diagnosis from
+  the measured scores and did not repeat the claim. Short notes of similar
+  sentence length look uniform to my style signal, whatever their voice.
+
+**Moment 4: checking a prompt-injection verdict (unit 8)**
+
+- *What I asked for:* Help marking the six prompt-injection attacks held or
+  broke.
+- *What came back:* A provisional HELD for all six, because no signal reads
+  text as instructions, plus a suggestion to run a control.
+- *What I changed:* I scored the same essay body with and without the PI02
+  prefix. It scored 0.668 alone and 0.456 with the prefix, so the injected
+  text did move AI text out of the `ai` band, through noise and not through
+  obedience. I changed PI02 to BROKE.
+
+**Moment 5: choosing and testing one fix (unit 8)**
+
+- *What I asked for:* Which single change my diagnosis pointed at.
+- *What came back:* Raise `AI_THRESHOLD` to 0.80, with predictions worked out
+  from my existing scores and a warning that it was tuned on the data it is
+  measured on. A reweighting option was rejected because it would not reach the
+  criterion 1 target.
+- *What I changed:* I committed the predictions before running anything, made
+  only that one change, and ran everything again. The predictions held:
+  criterion 1 went from 4/10 to 1/10 and FP01 and FP07 were cleared, but
+  EV03 and EV09 escaped. I reported that trade and the fragile margin in the
+  README and did not claim a general fix.
+
+**Moment 6: a bug I caused (unit 8)**
+
+- *What I asked for:* A helper that logs each refused request.
+- *What came back:* A `_reject` helper to put above `submit()`.
+- *What I changed:* I pasted it between the route decorators and `def submit()`,
+  so Flask sent `/submit` to the helper and returned 500s. I read the
+  traceback, moved the helper above the decorators, and confirmed with three
+  rejection entries in the log.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
@@ -389,17 +438,13 @@ caller can force. I could lower the daily limit further without hurting a real
 writer; I stopped at 50 because I have no evidence yet of what a real writer
 needs.
 
-**What a caller counts as:** <!-- per address, or per creator_id? They fail
-    differently — one script can look like a thousand callers, and one household
-    can look like one. -->
-the `creator_id` in the request body, or the IP address when there isn't one. 
-The weakness: the caller chooses `creator_id`, so a script that sends a new one 
-with every request gets a fresh limit each time and is never slowed. Keying on 
-IP address would fix that and instead make a classroom or household share one limit.
-I kept `creator_id` because it matches how a real writer behaves: each writer
-gets their own limit, and a household or classroom sharing one address is not
+**What a caller counts as:** the `creator_id` in the request body, or the IP
+address when there isn't one. I kept `creator_id` because each writer then gets
+their own limit, and a household or classroom sharing one address is not
 throttled together. The cost is that the caller chooses the id, so a script that
-sends a new `creator_id` with every request gets a fresh limit each time.
+sends a fresh `creator_id` with every request gets a fresh limit each time and
+is never slowed. Keying on IP address would fix that but make a shared network
+share one limit. My flood test used one id, so it does not show the bypass.
 
 **The run of status codes when I pushed past it:**
 
@@ -492,6 +537,8 @@ row was going for; BROKE means they did.
 | malformed | 19 | 1 |
 | flood_same_creator | 12 | 0 |
 | **Total** | **41** | **15** |
+
+Source: `results/attack_run_2026-11-07_2333_before.md`
 
 **Notes on the verdicts**
 
@@ -633,6 +680,7 @@ row was going for; BROKE means they did.
   "limit": "5 per 1 minute"
 }
 ```
+The last entry is a `rate_limited` rejection with `creator_id: unknown`. The starter’s `429` handler reads the id from the body, and this request was caught on my address’s shared bucket before the route ran. It has no `content_id` and fewer fields, as expected.
 
 **The single worst outcome:** FP03 (`c_c21ee6bd99e8`), a non-native English
 speaker writing carefully. The service labelled it `ai` with a combined score
@@ -956,10 +1004,13 @@ results files.
 
 **Broken attacks.**
 
-- *FP01–FP07 (7 broke).* Stage: signal two mainly, then both signals. Both agreed on `ai` (style 0.64 to 1.0, model 0.62 to 0.88), so averaging could not help. This is the same mechanism as criterion 1.
-- *EV01, EV05, EV08, PI02 (4 broke).* Stage: signal one. Typos, unusual tokens or an injected prefix raise perplexity, so `model_score` fell (0.16, 0.32, 0.25, and 0.20 for PI02). A control confirmed it for PI02: the same body scored 0.668 alone and 0.456 with the prefix. EV01 targeted word variety, but `type_token_ratio` has weight 0, so signal one's sensitivity is what moved it.
-- *MF07 (1 broke).* Stage: signal two. `words()` matches only `a-z`, so Arabic text gives zero words and the style signal returns its neutral fallback values (0.5167). The `ai` label rests on signal one alone.
-- *EV02, EV06, EV07 (3 broke).* These moved to `unsure` with style scores of 0.42 to 0.54. I have not inspected their text, so I do not claim a mechanism for them. ___ (check with `--show` before writing this line).
+- *FP01–FP07 (7 broke).* Stage: signal two, then both signals. Both read these real writers as `ai` (style 0.64–1.0, model 0.62–0.88), so averaging could not help. Same mechanism as criterion 1.
+- *EV01, EV05, EV08, PI02 (4 broke).* Stage: signal one. Typos, unusual tokens or an injected prefix raise perplexity, so `model_score` fell (0.16, 0.32, 0.25, 0.20). The PI02 control confirmed it: the same body scored 0.668 alone and 0.456 with the prefix.
+- *MF07 (1 broke).* Stage: signal two. `words()` matches only `a-z`, so Arabic gives zero words and style returns its neutral fallback (0.5167). The `ai` label rested on signal one alone.
+- *EV02 (broke).* Stage: signal two, `sentence_length_spread`. Inserting the one-word sentence "Really." after every other sentence made lengths very uneven (spread about 0.85), so the spread score fell to about 0.085. Punctuation stayed AI-like, so style was 0.5424 and the combined score 0.568 (`unsure`).
+- *EV06 (broke).* Stage: signal two, `sentence_length_spread`. One 51-word sentence next to "True." pushed spread to about 1.19, so the spread score fell to 0. Style was 0.5 and the combined score 0.536 (`unsure`).
+- *EV07 (broke).* Stage: signal two, `punctuation_density`. Padding with "; and, moreover," gave about 0.22 marks per word (my human anchor is 0.09), so the punctuation score fell to 0. With no full stops, the splitter saw one sentence and spread returned its neutral fallback. Style was 0.4167 and the combined score 0.501 (`unsure`).
+- *EV03, EV09 (broke only after my fix).* Stage: the label mapping. Their scores did not change (combined 0.773 and 0.757); raising `AI_THRESHOLD` to 0.80 moved them from `ai` to `unsure`.
 
 **The criteria I met, and how strong that is.**
 
@@ -1017,15 +1068,14 @@ Notes on the table:
   signal one alone gives 0.9064. It is now `unsure` only because 0.712 is under
   0.80.
 - **PI03, PI04 and PI06 moved to `unsure` for the same reason.** The injected
-  instruction still changed nothing, so they stay HELD. PI02 stays BROKE from the
-  control check in Milestone 2.
+  instruction still changed nothing, so they stay HELD. PI02 stays BROKE from the PI02 control check in Attack Run: Before.
 - **Several rows now sit at exactly 0.650 confidence** (EV03, EV09, FP01, FP07,
   PI03, PI04, PI06, MF07). That is the cap on `unsure` confidence,
   `min(1 − 0.35, 0.80) = 0.65`, so their confidences no longer distinguish them
   even though their combined scores differ.
 
 Run log, after (`results/run_2026-11-08_2218_after.md` and
-`results/criteria45_*_after.md`, three trials each, identical every time):
+`results/criteria45_2026-11-08-2220_after.md`, three trials each, identical every time):
 
 | Criterion | Target | Before | After (Run 1 / 2 / 3) | Verdict after |
 |---|---|---|---|---|
@@ -1061,47 +1111,53 @@ notes). It addresses one of the four diagnosed patterns.
 
 ## What's Still Broken
 
-**Criterion 3 (MISSED, 1/10).** Poems are read as predictable by signal one, and
-short casual notes as uniform by signal two. A fix would be a style measure that
-does not depend on sentence-length spread for short texts, or a rule that trusts
-a low style score more when signal one is high on repetitive lines. I stopped
-because both changes need many more texts than my ten to tune honestly, and I
-had already used my one change on the threshold.
+**Criterion 3 (MISSED, 1 of 10).** Signal one reads poems with repeated lines as
+predictable, and signal two reads short casual notes as uniform, so a text needs
+both signals low to earn `human` and almost none do. I would test a style
+measure that does not rely on sentence-length spread for short texts. I stopped
+because I used my one change on the threshold, and tuning a new measure
+honestly needs many more texts than my ten.
 
-**FP02 to FP06 (5 real writers still labelled `ai`).** Both signals agree, so no
-threshold below 0.90 clears them without also releasing my clearly-AI sample
-(0.8126). The cause is style saturating at 1.0 on formal prose. I would
-re-anchor `sentence_length_spread` and `punctuation_density` on a set that
-includes formal human writing. I stopped because I only have these texts, and
-anchoring on the texts I test with would repeat my unit 7 mistake.
+**FP02 to FP06 (5 real writers still labelled `ai`).** Both signals agree on
+these texts, and style saturates at 1.0 on formal prose. Clearing all five needs
+a threshold above 0.90, which would also release my clearly-AI sample (0.8126).
+I would re-anchor the two style measures on a set that includes formal human
+writing. I stopped because I only have my own texts, and anchoring on the texts
+I test with would repeat the mistake I made with my first anchors.
 
-**EV01, EV02, EV05 to EV09 (AI text escaping to `unsure`).** Typos, unusual
-tokens and prepended text lower signal one's score, and the wider band lets
-borderline AI text through. I would cap how far one signal can pull the average,
-or add a check for gibberish tokens. I stopped because either change makes the
-formal-writer false positives worse or adds a new attack surface.
+**EV01, EV02, EV03, EV05 to EV09 (AI text labelled `unsure`).** Typos, unusual
+tokens and prepended text lower signal one's score, and the wider unsure band now
+lets borderline AI through (EV03 and EV09 escaped because of my fix). I would
+cap how far one signal can pull the average, or flag gibberish tokens. I stopped
+because either change risks making the formal-writer false positives worse.
 
-**MF07 (Arabic text).** `words()` matches only `a-z`, so signal two sees nothing
-and returns a placeholder. The honest fix is to return "cannot score" for text
-with no Latin words instead of a neutral number. It is now `unsure` only because
-of the threshold.
+**MF07 (Arabic text).** `words()` matches only `a-z`, so signal two sees no
+words and returns a placeholder. It is `unsure` now only because of the
+threshold. The real fix is to return "cannot score" for text with no Latin
+words. I did not do it because it would be a second change.
 
-**FP08 (an 8-word genuine text refused).** The 10-word minimum protects against
-noisy scores and also rejects short honest writing. I would lower it and label
-short-text scores as low confidence.
+**FP08 (an 8-word genuine text refused).** My 10-word minimum guards against
+noisy scores and also rejects short honest writing. I would lower it and mark
+short-text results as low confidence.
 
-**Untested:** the rotating-`creator_id` bypass of my rate limit. The flood rows
-used one id, so I have not shown that a script sending a fresh id each time is
-never slowed. I kept `creator_id` as the caller key and know it is weaker than
-keying on the address.
+**RQ10 and RQ11 (429, never judged).** They had no usable `creator_id`, so they
+hit my address's shared bucket before the route ran. I do not know how the route
+would have handled them.
+
+**Rate limit key (untested).** I key on `creator_id`, which the caller chooses, so
+a script sending a fresh id each time would never be slowed. My flood test used
+one id and does not show this either way.
+
+**Criterion 2 was too easy.** It compares my two easiest samples, and I tuned
+the anchors partly on them. I would measure the gap over several AI and human
+texts, including a formal human one.
 
 **The trade I'd make if this ran for real:**
-I would keep the wide unsure band, and I would not use `ai` alone
-to penalise anyone, because a wrongly accused writer loses trust and has
-little room to argue, while a missed AI text costs the site very little. The
-people who pay are the site's moderators and honest writers competing against
-undetected AI text, and that cost is acceptable only if the label always comes
-with a working appeal.
+I would keep the wide unsure band and never act on an `ai` label without a
+human review through the appeal path. Wrongly accused writers pay with their
+trust and have little room to argue, while missed AI text costs the site little,
+and the cost of that choice falls on moderators and on honest writers competing
+against undetected AI text.
 
 
 <!-- ═════════════════════════════════════════════════════════════════════
