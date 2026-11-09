@@ -652,18 +652,284 @@ likely to accuse and the one with the least room to argue back.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |
+| 1. Plain human texts labelled high-confidence AI | ≤ 1 of 10 | 4/10 | 4/10 | 4/10 | MISSED |
+| 2. Combined-score gap, `clearly_ai` minus `clearly_human` | ≥ 0.35 | 0.566 | 0.566 | 0.566 | MET |
+| 3. Expressive human texts labelled high-confidence human | ≥ 5 of 10 | 1/10 | 1/10 | 1/10 | MISSED |
+| 4. Bad inputs return the contract status, no 500 | 10 of 10 | 10/10 | 10/10 | 10/10 | MET |
+| 5. Appeal: 200 + 1 entry, 404 + 0, 409 + 0 | 3 of 3 cases | 3/3 | 3/3 | 3/3 | MET |
 
-**Real output from one trial**, pasted as text, naming the file and function
-that produced it:
+All three trials were identical for every scenario, as predicted. Criterion 2 is computed
+as (model_score + style_score) / 2 because the response does not include `combined_score`
+(0.5/0.5 weights): 0.8126 − 0.2467 = 0.5659.
+
+Criterion 4 ran in two parts, because `run_eval.py` only sends dict bodies to
+`/submit`: eight inputs through `run_eval.py` (`results/run_2026-11-08_1831_before.md`),
+and the bare JSON list and the unparseable body through `run_criteria45.py`
+(`results/criteria45_2026-11-08_1848_before.md`). Criterion 5 ran only through
+`run_criteria45.py`, which also calls `/appeal`. It counts entries with
+`event: "appeal"`, not total entries, because my 404 and 409 responses also
+write `rejected` entries. Every request used its own `creator_id`, so this eval
+never exercises the rate limiter.
+
+**Predictions against results** (predictions committed before the run in `docs/predictions.md`)
+
+| # | Predicted | Actual |
+|---|---|---|
+| 1 | MISSED, 5/10 | MISSED, 4/10 |
+| 2 | MET, about 0.57 | MET, 0.566 |
+| 3 | MISSED, 2/10 | MISSED, 1/10 |
+| 4 | MET, 10/10 | MET, 10/10 |
+| 5 | MET, 3/3 | MET, 3/3 |
+
+**Which texts missed** (trial 1, same in all three)
+
+| Text | Guess | model | style | combined |
+|---|---|---|---|---|
+| plain_01 | unsure | 0.220 | 1.000 | 0.610 |
+| plain_02 | ai | 0.511 | 1.000 | 0.755 |
+| plain_03 | ai | 0.632 | 0.997 | 0.815 |
+| plain_04 | ai | 0.678 | 0.819 | 0.748 |
+| plain_05 | unsure | 0.336 | 0.952 | 0.644 |
+| plain_06 | unsure | 0.625 | 0.439 | 0.532 |
+| plain_07 | ai | 0.530 | 0.777 | 0.654 |
+| maria_list | unsure | 0.586 | 0.500 | 0.543 |
+| maria_garden | unsure | 0.599 | 0.463 | 0.531 |
+| maria_journey | unsure | 0.604 | 0.417 | 0.511 |
+| expressive_01 | unsure | 0.684 | 0.265 | 0.475 |
+| expressive_02 | unsure | 0.846 | 0.157 | 0.501 |
+| expressive_03 | human | 0.436 | 0.258 | 0.347 |
+| expressive_04 | ai | 0.687 | 0.759 | 0.723 |
+| expressive_05 | ai | 0.711 | 0.688 | 0.699 |
+| expressive_06 | ai | 0.630 | 0.705 | 0.667 |
+| expressive_07 | unsure | 0.533 | 0.608 | 0.570 |
+| expressive_08 | unsure | 0.631 | 0.665 | 0.648 |
+| expressive_09 | unsure | 0.452 | 0.843 | 0.648 |
+| expressive_10 | unsure | 0.372 | 0.843 | 0.607 |
+
+The first ten rows are criterion 1 and the last ten are criterion 3. Several results sit
+within 0.02 of a threshold (plain_07 0.654, plain_05 0.644, expressive_03 0.347,
+expressive_06 0.667, expressive_08 and expressive_09 0.648), so some counts depend on
+rounding at the band edges. Neither verdict would change.
+
+**Real output from one trial** (trial 1), pasted as text, naming the file and function
+that produced it.
+
+Criteria 1 to 3 and the eight dict inputs of criterion 4 come from
+`results/run_2026-11-08_1831_before.md`, produced by `run_eval.py::main` (written by
+`write_report`) sending requests to `app.py::submit`.
+
+Criterion 1: the four plain human texts labelled `ai`
 
 ```json
-
+[
+  {
+    "status": 200, 
+    "guess": "ai", 
+    "confidence": 0.7553, 
+    "model_score": 0.5106, 
+    "style_score": 1.0,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "To fulfil my loneliness, I was obsessed with collecting the stuffed an"
+  },
+  {
+    "status": 200,
+    "guess": "ai", 
+    "confidence": 0.8146, 
+    "model_score": 0.6322, 
+    "style_score": 0.9971,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "Year by year, children\u2019s literature attempts to break down gender ster"
+  },
+  {
+    "status": 200, 
+    "guess": "ai", 
+    "confidence": 0.7482, 
+    "model_score": 0.6778, 
+    "style_score": 0.8187,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "Throughout the readings, I realized that \u201cthe U.S. benevolent assimila"
+  },
+  {
+    "status": 200, 
+    "guess": "ai", 
+    "confidence": 0.6536, 
+    "model_score": 0.5302, 
+    "style_score": 0.7769,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "The pyramid of Djoser is the oldest pyramid built in the period of the"
+  }
+]
 ```
+
+Criterion 2: both samples
+
+```json
+[
+  {
+    "status": 200, 
+    "guess": "ai", 
+    "confidence": 0.8126, 
+    "model_score": 0.7544, 
+    "style_score": 0.8709,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "The importance of effective time management cannot be overstated in to"
+  },
+  {
+    "status": 200, 
+    "guess": "human", 
+    "confidence": 0.7533, 
+    "model_score": 0.4445, 
+    "style_score": 0.0489,
+    "label": "We think this was most likely written by a person.",
+    "sent": "I didn't sleep. Not properly, anyway \u2014 I lay there listening to the bo"
+  }
+]
+```
+
+Criterion 3: the one `human`, and two expressive texts labelled `ai`
+
+```json
+[
+  {
+    "status": 200, 
+    "guess": "human", 
+    "confidence": 0.6529, 
+    "model_score": 0.4362, 
+    "style_score": 0.2581,
+    "label": "We think this was most likely written by a person.",
+    "sent": "Wind\nThe breeze blew gently,\nGently as caressing my cheeks,\nBut felt s"
+  },
+  {
+    "status": 200, 
+    "guess": "ai", 
+    "confidence": 0.7231, 
+    "model_score": 0.6869, 
+    "style_score": 0.7594,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "RIVER: \tWhat are you talking about? You \u2026\u2026. you transferred someone\u2019s "
+  },
+  {
+    "status": 200, 
+    "guess": "ai", 
+    "confidence": 0.6991, 
+    "model_score": 0.7105, 
+    "style_score": 0.6877,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "I had my birthday party on Sunday afternoon. The Rin Tin Tin movie was"
+  }
+]
+```
+
+Criterion 4, the dict inputs (eight statuses in order: 400, 400, 400, 400, 400, 200, 200, 413; shown: one 400, the two boundary 200s, and the 413)
+
+```json
+[
+  {
+    "status": 400, 
+    "guess": null, 
+    "confidence": null, 
+    "model_score": null, 
+    "style_score": null, 
+    "label": null,
+    "sent": "{\"creator_id\": \"eval_bad_missing\"}"
+  },
+  {
+    "status": 200, 
+    "guess": "ai", 
+    "confidence": 0.9219, 
+    "model_score": 0.927, 
+    "style_score": 0.9167,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "One two three four five six seven eight nine ten"
+  },
+  {
+    "status": 200, 
+    "guess": "ai", 
+    "confidence": 0.9571, 
+    "model_score": 0.9975, 
+    "style_score": 0.9167,
+    "label": "This looks more like AI-written text, but we can be wrong. If you wrote it yourself, you can ask for a review.",
+    "sent": "word word word word word word word word word word word word word word "
+  },
+  {
+    "status": 413, 
+    "guess": null, 
+    "confidence": null, 
+    "model_score": null, 
+    "style_score": null, 
+    "label": null,
+    "sent": "word word word word word word word word word word word word word word "
+  }
+]
+```
+
+Criteria 4 (raw bodies) and 5 come from `results/criteria45_2026-11-08_1848_before.md`,
+produced by `run_criteria45.py::main`.
+
+Criterion 4, the two raw bodies, sent to `app.py::submit`:
+
+```json
+[
+  {
+    "input": "bare JSON list [1,2,3]", 
+    "expected": 400, 
+    "status": 400, 
+    "ok": true
+  },
+  {
+    "input": "unparseable JSON {\"text\": \"unfinished", 
+    "expected": 400, 
+    "status": 400, 
+    "ok": true
+  }
+]
+```
+
+Criterion 5, sent to `app.py::appeal`:
+
+```json
+{
+  "content_id": "c_165e926c4e43",
+  "submit_status": 200,
+  "cases": [
+    {
+      "case": "valid appeal", 
+      "status": 200,
+      "body": {
+                "content_id": "c_165e926c4e43",
+                "message": "Your appeal has been recorded and this submission is under review.",
+                "status": "under_review"
+              },
+      "new_appeal_entries": 1, 
+      "entries_for_id": 1, 
+      "ok": true
+    },
+    {
+      "case": "unknown content_id", 
+      "status": 404,
+      "body": {
+                "error": "not_found", 
+                "message": "No submission with that content_id."
+              },
+      "new_appeal_entries": 0, 
+      "ok": true
+    },
+    {
+      "case": "second appeal", 
+      "status": 409,
+      "body": {
+                "error": "already_under_review",
+                "message": "This submission is already under review."
+              },
+      "new_appeal_entries": 0, 
+      "ok": true
+    }
+  ]
+}
+```
+
+All three trials were identical, so only trial 1 is shown. The full output is in the
+results files.
 
 **Diagnoses**
 
