@@ -969,37 +969,139 @@ Criterion 2 passed (0.566 against 0.35), but it was always going to: it compares
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** `config.py::AI_THRESHOLD`, from 0.65 to 0.80. Nothing else.
+The human threshold stayed at 0.35, the weights and anchors are unchanged, and
+the label wording is unchanged. The unsure band is now 0.35 to 0.80.
 
-**Which diagnosis pointed at it:**
+**Which diagnosis pointed at it:** My diagnosis of criterion 1 (stage: signal two)
+and of FP01 to FP07. Formal and uniform human prose saturates the style signal,
+and both signals then agree on `ai`, so averaging cannot help. Four of my ten
+plain texts and five of the seven attack-set false positives that reached `ai`
+were real writers. Widening the unsure band is the one lever that directly
+reduces wrongful accusations without touching the signals.
 
 ### Attack Run — After
 
-<!-- Same format. `run_attacks.py --label after` -->
+Same rule as before: evasion is HELD if labelled `ai`; false positive is HELD if
+not labelled `ai`; prompt injection is HELD if the instruction changed nothing;
+malformed and flood are HELD on a clean 4xx or 429. Source:
+`results/attack_run_2026-11-08_2217_after.md`.
 
+Rows whose verdict changed:
 
+| ID | Family | Before | After | Verdict before → after |
+|---|---|---|---|---|
+| EV03 | evasion | ai (0.773) | unsure (0.650) | HELD → BROKE |
+| EV09 | evasion | ai (0.757) | unsure (0.650) | HELD → BROKE |
+| FP01 | false_positive | ai (0.743) | unsure (0.650) | BROKE → HELD |
+| FP07 | false_positive | ai (0.761) | unsure (0.650) | BROKE → HELD |
+| MF07 | malformed | ai (0.712) | unsure (0.650) | BROKE → HELD |
+| PI03, PI04, PI06 | prompt_injection | ai | unsure | HELD → HELD |
+
+Every other row has the same guess and verdict as in the before table (EV01,
+EV02, EV05 to EV08 and PI02 still BROKE; EV04 and EV10 still HELD; FP02 to FP06
+still BROKE; all other malformed and flood rows HELD).
+
+| Family | Held before | Held after | Broke before | Broke after |
+|---|---|---|---|---|
+| evasion | 4 | 2 | 6 | 8 |
+| false_positive | 1 | 3 | 7 | 5 |
+| prompt_injection | 5 | 5 | 1 | 1 |
+| malformed | 19 | 20 | 1 | 0 |
+| flood_same_creator | 12 | 12 | 0 | 0 |
+| **Total** | **41** | **42** | **15** | **14** |
+
+Notes on the table:
+- **MF07 flipped because of the threshold, not because anything was fixed.**
+  Arabic text still gives zero words, so style returns its neutral 0.5167, and
+  signal one alone gives 0.9064. It is now `unsure` only because 0.712 is under
+  0.80.
+- **PI03, PI04 and PI06 moved to `unsure` for the same reason.** The injected
+  instruction still changed nothing, so they stay HELD. PI02 stays BROKE from the
+  control check in Milestone 2.
+- **Several rows now sit at exactly 0.650 confidence** (EV03, EV09, FP01, FP07,
+  PI03, PI04, PI06, MF07). That is the cap on `unsure` confidence,
+  `min(1 − 0.35, 0.80) = 0.65`, so their confidences no longer distinguish them
+  even though their combined scores differ.
+
+Run log, after (`results/run_2026-11-08_2218_after.md` and
+`results/criteria45_*_after.md`, three trials each, identical every time):
+
+| Criterion | Target | Before | After (Run 1 / 2 / 3) | Verdict after |
+|---|---|---|---|---|
+| 1. Plain human texts labelled `ai` | ≤ 1 of 10 | 4/10, MISSED | 1/10, 1/10, 1/10 | MET (no margin) |
+| 2. Combined gap | ≥ 0.35 | 0.566, MET | 0.566 each | MET |
+| 3. Expressive texts labelled `human` | ≥ 5 of 10 | 1/10, MISSED | 1/10, 1/10, 1/10 | MISSED |
+| 4. Bad inputs, contract status | 10 of 10 | 10/10, MET | 10/10 each | MET |
+| 5. Appeal path | 3 of 3 | 3/3, MET | 3/3 each | MET |
 
 **Did it help, and how do I know:**
+Partly, and it moved the cost to the other side. Criterion 1 went from 4/10 to
+1/10 in all three trials and now meets its target, and two attack-set writers
+(FP01, FP07) are no longer accused. But two AI texts (EV03, EV09) moved from
+`ai` to `unsure`, so evasion held fell from 4 to 2. On this set the trade is
+one for one: the site catches less AI text, and borderline writers benefit.
 
-<!-- Widening the unsure band usually fixes one problem and creates another.
-     Reporting that trade honestly is worth full credit. -->
+I know it helped because the same texts were scored before and after with
+nothing else changed, and the three trials matched exactly. Four limits:
+- **Tuned to my data.** I chose 0.80 after seeing these scores, so the criterion
+  1 pass is not evidence it generalises.
+- **No margin.** The pass depends on plain_03 (0.815) being the only text above
+  the line. plain_02 (0.755) and plain_04 (0.748) are under it by about 0.05.
+- **A ceiling.** My clearly-AI sample scores 0.8126, only 0.0126 above 0.80, so
+  a higher threshold would stop catching it.
+- **The worst cases are untouched.** FP02 to FP06 (0.849 to 0.900) are still
+  accused, so the highest-scoring real writers get no relief.
 
-
+Criterion 3 did not move, because this change does nothing for the poetry and
+casual-note failures (signal one on repetition, signal two on short uniform
+notes). It addresses one of the four diagnosed patterns.
 
 ---
 
 ## What's Still Broken
 
-<!-- For each attack still getting through and each criterion still missed:
-     what you'd do, and why you stopped. -->
+**Criterion 3 (MISSED, 1/10).** Poems are read as predictable by signal one, and
+short casual notes as uniform by signal two. A fix would be a style measure that
+does not depend on sentence-length spread for short texts, or a rule that trusts
+a low style score more when signal one is high on repetitive lines. I stopped
+because both changes need many more texts than my ten to tune honestly, and I
+had already used my one change on the threshold.
 
+**FP02 to FP06 (5 real writers still labelled `ai`).** Both signals agree, so no
+threshold below 0.90 clears them without also releasing my clearly-AI sample
+(0.8126). The cause is style saturating at 1.0 on formal prose. I would
+re-anchor `sentence_length_spread` and `punctuation_density` on a set that
+includes formal human writing. I stopped because I only have these texts, and
+anchoring on the texts I test with would repeat my unit 7 mistake.
 
+**EV01, EV02, EV05 to EV09 (AI text escaping to `unsure`).** Typos, unusual
+tokens and prepended text lower signal one's score, and the wider band lets
+borderline AI text through. I would cap how far one signal can pull the average,
+or add a check for gibberish tokens. I stopped because either change makes the
+formal-writer false positives worse or adds a new attack surface.
+
+**MF07 (Arabic text).** `words()` matches only `a-z`, so signal two sees nothing
+and returns a placeholder. The honest fix is to return "cannot score" for text
+with no Latin words instead of a neutral number. It is now `unsure` only because
+of the threshold.
+
+**FP08 (an 8-word genuine text refused).** The 10-word minimum protects against
+noisy scores and also rejects short honest writing. I would lower it and label
+short-text scores as low confidence.
+
+**Untested:** the rotating-`creator_id` bypass of my rate limit. The flood rows
+used one id, so I have not shown that a script sending a fresh id each time is
+never slowed. I kept `creator_id` as the caller key and know it is weaker than
+keying on the address.
 
 **The trade I'd make if this ran for real:**
-
-<!-- Two sentences. Fewer wrong accusations means more AI text getting through.
-     Say which way you'd go and WHO PAYS FOR IT. -->
-
+I would keep the wide unsure band, and I would not use `ai` alone
+to penalise anyone, because a wrongly accused writer loses trust and has
+little room to argue, while a missed AI text costs the site very little. The
+people who pay are the site's moderators and honest writers competing against
+undetected AI text, and that cost is acceptable only if the label always comes
+with a working appeal.
 
 
 <!-- ═════════════════════════════════════════════════════════════════════
